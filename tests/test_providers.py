@@ -4,7 +4,7 @@ import httpx
 import openai
 import pytest
 
-from ai_operator.providers import GROQ, OpenAIProvider, ProviderError, make_provider
+from ai_operator.providers import GITHUB, GROQ, OpenAIProvider, ProviderError, make_provider
 
 TOOLS = [{"name": "get_insights", "description": "Stats.", "schema": {"type": "object", "properties": {}}}]
 HISTORY = [{"role": "user", "content": "How many leads came in this week?"}]
@@ -23,7 +23,7 @@ def completion(message):
 
 
 def test_make_provider_picks_groq_from_key(monkeypatch):
-    for env in ("ANTHROPIC_API_KEY", "OPENAI_API_KEY", "OPERATOR_PROVIDER", "OPERATOR_MODEL"):
+    for env in ("ANTHROPIC_API_KEY", "OPENAI_API_KEY", "GITHUB_TOKEN", "OPERATOR_PROVIDER", "OPERATOR_MODEL"):
         monkeypatch.delenv(env, raising=False)
     monkeypatch.setenv("GROQ_API_KEY", "gsk_test")
     p = make_provider()
@@ -32,7 +32,7 @@ def test_make_provider_picks_groq_from_key(monkeypatch):
 
 
 def test_no_key_message_mentions_free_option(monkeypatch):
-    for env in ("ANTHROPIC_API_KEY", "OPENAI_API_KEY", "GROQ_API_KEY", "OPERATOR_PROVIDER"):
+    for env in ("ANTHROPIC_API_KEY", "OPENAI_API_KEY", "GROQ_API_KEY", "GITHUB_TOKEN", "OPERATOR_PROVIDER"):
         monkeypatch.delenv(env, raising=False)
     with pytest.raises(ProviderError, match="GROQ_API_KEY"):
         make_provider()
@@ -157,3 +157,35 @@ def test_brief_conversation_over_the_groq_wire_format(monkeypatch):
     last = bodies[-1]["messages"]
     assert [m["role"] for m in last[-2:]] == ["assistant", "tool"]
     assert json.loads(last[-1]["content"])["status"] == "executed"
+
+
+def test_make_provider_picks_github_models(monkeypatch):
+    for env in ("ANTHROPIC_API_KEY", "OPENAI_API_KEY", "GROQ_API_KEY", "OPERATOR_PROVIDER", "OPERATOR_MODEL"):
+        monkeypatch.delenv(env, raising=False)
+    monkeypatch.setenv("GITHUB_TOKEN", "github_pat_test")
+    p = make_provider()
+    assert (p.name, p.model) == ("github", "openai/gpt-4o-mini")
+    assert str(p.client.base_url).startswith("https://models.github.ai/inference")
+
+
+def test_github_models_request_url():
+    seen = {}
+
+    def handler(request):
+        seen["url"] = str(request.url)
+        return httpx.Response(200, json=completion({"role": "assistant", "content": "hi"}))
+
+    p = OpenAIProvider(GITHUB, api_key="github_pat_test")
+    p.client = openai.OpenAI(api_key="github_pat_test", base_url=GITHUB.base_url, max_retries=0,
+                             http_client=httpx.Client(transport=httpx.MockTransport(handler)))
+    p.complete("s", HISTORY, TOOLS)
+    assert seen["url"] == "https://models.github.ai/inference/chat/completions"
+
+
+def test_github_bad_token_message():
+    p = OpenAIProvider(GITHUB, api_key="bad")
+    p.client = openai.OpenAI(api_key="bad", base_url=GITHUB.base_url, max_retries=0,
+                             http_client=httpx.Client(transport=httpx.MockTransport(
+                                 lambda r: httpx.Response(401, json={"error": {"message": "Bad credentials"}}))))
+    with pytest.raises(ProviderError, match="GitHub Models rejected the API key. Check GITHUB_TOKEN"):
+        p.complete("s", HISTORY, TOOLS)

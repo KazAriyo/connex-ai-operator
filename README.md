@@ -25,7 +25,7 @@ AI Operator: Done, the task has been created.
 
 ## Run it
 
-You need Python 3.10 or newer and one API key: **Groq (free)**, Anthropic or OpenAI.
+You need Python 3.10 or newer and one API key: **Groq (free)**, **GitHub Models (free)**, Anthropic or OpenAI.
 
 ```bash
 git clone <this repo> && cd connex-ai-operator
@@ -71,7 +71,7 @@ It also prints the reply to a question the CRM can't answer, for you to read.
 **Tests** run offline with a scripted model, so they need no API key:
 
 ```bash
-pytest -q        # 70 tests
+pytest -q        # 73 tests
 ```
 
 ### Things to try
@@ -95,26 +95,30 @@ The mock data is generated relative to today's date and refreshed automatically 
 
 ## Model and provider
 
-Three providers are supported. The app uses whichever key you set.
+Four providers are supported. The app uses whichever key you set.
 
 | Provider | Pattern | Default model | Cost |
 |---|---|---|---|
 | **Groq** | OpenAI-style function calling | `openai/gpt-oss-120b` | Free plan, no card needed |
+| **GitHub Models** | OpenAI-style function calling | `openai/gpt-4o-mini` | Free with any GitHub account |
 | **Anthropic** | Native Claude tool use | `claude-sonnet-5-5` | Paid |
 | **OpenAI** | Function calling | `gpt-4.1-mini` | Paid |
 
 **Free key from Groq:** sign up at [console.groq.com](https://console.groq.com), open **API Keys**, click **Create API Key**, and paste the key into `.env` as `GROQ_API_KEY=...`. The free plan is rate limited (roughly 30 requests and 8,000 tokens per minute). The app waits and retries automatically when it hits the limit, so a reply can occasionally take a little longer.
 
-All three sit behind one small interface in `ai_operator/providers.py`. The pattern is the same for each: the model proposes a typed call, our code validates and executes it, and the result goes back to the model. Switching vendor changes nothing else in the app.
+**Free token from GitHub Models:** on GitHub go to **Settings → Developer settings → Personal access tokens → Fine-grained tokens → Generate new token**. Under **Permissions**, add **Models** with **Read** access, generate it, and paste it into `.env` as `GITHUB_TOKEN=...`. Free usage is rate limited per minute and per day.
+
+All four sit behind one small interface in `ai_operator/providers.py`. The pattern is the same for each: the model proposes a typed call, our code validates and executes it, and the result goes back to the model. Switching vendor changes nothing else in the app.
 
 Settings in `.env` (leave any you don't need empty):
 
 | Setting | Purpose |
 |---|---|
 | `GROQ_API_KEY` | Free key from Groq. |
+| `GITHUB_TOKEN` | Free GitHub token with the Models: Read permission. |
 | `ANTHROPIC_API_KEY` | Key for Anthropic. |
 | `OPENAI_API_KEY` | Key for OpenAI. |
-| `OPERATOR_PROVIDER` | `groq`, `anthropic` or `openai`. Optional; if empty, the first key found is used (Anthropic, then OpenAI, then Groq). |
+| `OPERATOR_PROVIDER` | `groq`, `github`, `anthropic` or `openai`. Optional; if empty, the first key found is used (Anthropic, OpenAI, Groq, then GitHub). |
 | `OPERATOR_MODEL` | Model name override, e.g. `openai/gpt-oss-20b`, `claude-haiku-5-5` or `gpt-4.1-mini`. |
 | `OPERATOR_TODAY` | Optional `YYYY-MM-DD` to pin "today" for a repeatable demo. |
 
@@ -185,7 +189,7 @@ A language model is a decision-maker that is usually right and occasionally conf
 ai_operator/
   agent.py      the loop and the confirm-before-write gate
   tools.py      typed tools: schemas, validation, read and write logic
-  providers.py  Anthropic, OpenAI and Groq adapters
+  providers.py  Anthropic, OpenAI, Groq and GitHub Models adapters
   prompts.py    system prompt (date, mode, grounding rules)
   clock.py      date expressions resolved by code
   store.py      JSON file store (atomic writes)
@@ -193,7 +197,7 @@ ai_operator/
 cli.py          terminal chat
 web/            FastAPI app and a single-page UI
 live_check.py   runs the brief's test conversation against the real model
-tests/          70 offline tests (tools, agent loop, providers, web API, live check) and a scripted model for them
+tests/          73 offline tests (tools, agent loop, providers, web API, live check) and a scripted model for them
 data/crm.json   created on first run (git-ignored)
 ```
 
