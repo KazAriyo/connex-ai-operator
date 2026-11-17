@@ -161,9 +161,9 @@ user ──▶ model (sees tool schemas only, never the data)
 
 Each of the brief's four rules is enforced in code, not left to the prompt.
 
-**1. The model talks, your code operates.** The model never touches `data/crm.json`. It produces a tool name and some JSON, and that is all. `ai_operator/tools.py` decides whether the call is valid and what happens. Date arithmetic is code too: the model passes "friday" and `clock.py` resolves it to Fri 20 Nov 2026. Models are bad at counting days; code isn't.
+**1. The model talks, your code operates.** The model never touches `data/crm.json`. It produces a tool name and some JSON, and that is all. `ai_operator/tools.py` decides whether the call is valid and what happens. Date arithmetic is code too: the model passes "friday" and `ai_operator/clock.py` resolves it to Fri 20 Nov 2026. Models are bad at counting days; code isn't.
 
-**2. Confirm before you act.** The gate is in `agent.py`. When the model calls a write tool, the agent does not run it. It calls the tool's `prepare` step, which validates and resolves everything but changes nothing, then stops and shows the user a code-generated summary. The write runs only if the user's next message is an explicit yes. Anything else counts as a no ("default deny"), and the model is told the action was cancelled. This holds even when:
+**2. Confirm before you act.** The gate is in `ai_operator/agent.py`. When the model calls a write tool, the agent does not run it. It calls the tool's `prepare` step, which validates and resolves everything but changes nothing, then stops and shows the user a code-generated summary. The write runs only if the user's next message is an explicit yes. Anything else counts as a no ("default deny"), and the model is told the action was cancelled. This holds even when:
 - the model forgets to ask, or claims "Done!" in the same breath (there's a test for this);
 - the model proposes several writes at once (each one is confirmed separately);
 - the record changes while waiting for confirmation (the write is refused rather than applied to stale data).
