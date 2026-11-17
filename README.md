@@ -71,7 +71,7 @@ It also prints the reply to a question the CRM can't answer, for you to read.
 **Tests** run offline with a scripted model, so they need no API key:
 
 ```bash
-pytest -q        # 74 tests
+pytest -q        # 76 tests
 ```
 
 ### Things to try
@@ -194,7 +194,7 @@ ai_operator/
 cli.py          terminal chat
 web/            FastAPI app and a single-page UI
 live_check.py   runs the brief's test conversation against the real model
-tests/          74 offline tests (tools, agent loop, providers, web API, live check) and a scripted model for them
+tests/          76 offline tests (tools, agent loop, providers, web API, live check) and a scripted model for them
 data/crm.json   created on first run (git-ignored)
 ```
 

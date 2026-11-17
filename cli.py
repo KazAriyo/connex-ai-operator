@@ -3,6 +3,7 @@ from __future__ import annotations
 import argparse
 import json
 import os
+import re
 import sys
 
 from ai_operator import load_dotenv
@@ -39,6 +40,10 @@ def c(text: str, code: str) -> str:
     return f"\033[{code}m{text}\033[0m" if USE_COLOUR else text
 
 
+def render_markdown(text: str) -> str:
+    return re.sub(r"\*\*(.+?)\*\*", lambda m: c(m.group(1), "1"), text)
+
+
 def show(reply: Reply, verbose: bool) -> None:
     for e in reply.events:
         t = e["type"]
@@ -54,7 +59,7 @@ def show(reply: Reply, verbose: bool) -> None:
             elif verbose:
                 print(c("  " + json.dumps(e["data"], ensure_ascii=False)[:600], "2"))
         elif t == "assistant":
-            print(c("AI Operator: ", "1;36") + e["text"])
+            print(c("AI Operator: ", "1;36") + render_markdown(e["text"]))
         elif t == "confirm":
             print(c("AI Operator: ", "1;36") + c(e["text"], "1;33"))
         elif t == "executed":

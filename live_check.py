@@ -2,6 +2,7 @@ from __future__ import annotations
 
 import sys
 import tempfile
+import re
 from dataclasses import dataclass
 from pathlib import Path
 
@@ -18,6 +19,16 @@ class Check:
     status: str
     detail: str
     transcript: list[str]
+
+
+NUMBER_WORDS = {"zero": 0, "one": 1, "two": 2, "three": 3, "four": 4, "five": 5,
+                "six": 6, "seven": 7, "eight": 8, "nine": 9, "ten": 10}
+
+
+def _numbers(text: str) -> set[int]:
+    found = {int(n) for n in re.findall(r"\b\d+\b", text)}
+    found |= {NUMBER_WORDS[w] for w in re.findall(r"[a-z]+", text.lower()) if w in NUMBER_WORDS}
+    return found
 
 
 def _calls(reply: Reply) -> list[tuple[str, str]]:
@@ -37,7 +48,7 @@ def _talk(op: Operator, text: str, log: list[str]) -> Reply:
         elif e["type"] == "executed":
             log.append(f"  [calls {e['name']}]")
         elif e["type"] in ("assistant", "error"):
-            log.append(f"AI Operator: {e['text']}")
+            log.append("AI Operator: " + re.sub(r"\*\*(.+?)\*\*", r"\1", e["text"]))
         elif e["type"] == "confirm":
             log.append(f"AI Operator: {e['text']}")
     return reply
@@ -56,10 +67,10 @@ def run_checks(provider: Provider, data_path: Path) -> list[Check]:
         results.append(Check("Ask: new leads this week", "FAIL", _errors(r)[0], log))
         return results
     ok = (any(m == "read" for _, m in calls) and not any(m == "write" for _, m in calls)
-          and not r.awaiting_confirmation and "3" in r.text and "2" in r.text)
+          and not r.awaiting_confirmation and {2, 3} <= _numbers(r.text))
     results.append(Check("Ask: new leads this week", "PASS" if ok else "FAIL",
-                         f"tools used: {[n for n, _ in calls]}; expected a read tool and '3 ... 2' in the reply",
-                         list(log)))
+                         f"tools used: {[n for n, _ in calls]}; expected a read tool, and 3 new leads with "
+                         "2 unassigned in the reply", list(log)))
 
     log = []
     before = len(store.tasks)

@@ -44,3 +44,16 @@ def test_live_check_catches_a_model_that_skips_tools(tmp_path):
     provider = ScriptedProvider([_say("You had 5 new leads.")] + [_say("ok")] * 10)
     results = run_checks(provider, tmp_path / "crm.json")
     assert results[0].status == "FAIL"
+
+
+def test_numbers_written_as_words_count(tmp_path):
+    from live_check import _numbers
+    assert {2, 3} <= _numbers("Three new leads this week, two are unassigned.")
+    assert {2, 3} <= _numbers("3 new leads this week, 2 are unassigned.")
+    assert not {2, 3} <= _numbers("Three new leads were created this week.")
+
+
+def test_cli_renders_bold_without_asterisks(monkeypatch):
+    import cli
+    monkeypatch.setattr(cli, "USE_COLOUR", False)
+    assert cli.render_markdown("Task **Call Aisha Khan** for **Friday**") == "Task Call Aisha Khan for Friday"
