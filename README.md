@@ -95,6 +95,8 @@ The mock data is generated relative to today's date and refreshed automatically 
 
 ## Model and provider
 
+**Built and tested with Groq, model `openai/gpt-oss-120b`.** Running `python live_check.py` against it on 17 Nov 2026 gave 6 passed, 0 failed. The one check that needs reading by eye (a question the CRM can't answer) was answered correctly, with nothing invented.
+
 Three providers are supported. The app uses whichever key you set.
 
 | Provider | Pattern | Default model | Cost |
