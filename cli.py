@@ -2,6 +2,7 @@ from __future__ import annotations
 
 import argparse
 import json
+import os
 import sys
 
 from ai_operator import load_dotenv
@@ -9,7 +10,22 @@ from ai_operator.agent import Operator, Reply, describe_args
 from ai_operator.providers import ProviderError, make_provider
 from ai_operator.store import CRMStore
 
-USE_COLOUR = sys.stdout.isatty()
+
+def _enable_windows_ansi() -> bool:
+    try:
+        import ctypes
+
+        kernel32 = ctypes.windll.kernel32
+        handle = kernel32.GetStdHandle(-11)
+        mode = ctypes.c_uint32()
+        if not kernel32.GetConsoleMode(handle, ctypes.byref(mode)):
+            return False
+        return bool(kernel32.SetConsoleMode(handle, mode.value | 0x0004))
+    except Exception:
+        return False
+
+
+USE_COLOUR = sys.stdout.isatty() and (os.name != "nt" or _enable_windows_ansi())
 
 HELP = """Commands:
   /ask    switch to Ask mode (read-only)
