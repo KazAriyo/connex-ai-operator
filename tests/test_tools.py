@@ -155,3 +155,28 @@ def test_store_refreshes_stale_data(tmp_path, monkeypatch):
     CRMStore(path=path)
     monkeypatch.setenv("OPERATOR_TODAY", "2026-11-20")
     assert CRMStore(path=path).data["generated_on"] == "2026-11-20"
+
+
+@pytest.mark.parametrize("name,args", [
+    ("search_leads", {}), ("search_leads", {"query": "nowhere"}), ("get_insights", {"period": "all_time"}),
+    ("get_calendar", {"range": "this_week"}), ("get_calendar", {"start": "2030-01-01"}),
+    ("list_tasks", {"status": "all"}),
+])
+def test_read_outputs_match_declared_schema(s, name, args):
+    t = TOOLS[name]
+    assert t.check_output(t.run(s, t.validate(args))) is not None
+
+
+@pytest.mark.parametrize("name,args", [
+    ("create_task", {"title": "Call Aisha Khan", "due": "friday", "related_to": "L-001"}),
+    ("update_lead_status", {"lead_id": "L-002", "status": "contacted"}),
+    ("complete_task", {"task_id": "T-001"}),
+])
+def test_write_outputs_match_declared_schema(s, name, args):
+    t = TOOLS[name]
+    assert t.check_output(prep(s, name, args).apply()) is not None
+
+
+def test_malformed_output_fails_loudly():
+    with pytest.raises(ToolError, match="does not match its schema"):
+        TOOLS["get_insights"].check_output({"new_leads": "three"})

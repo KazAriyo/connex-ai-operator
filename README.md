@@ -5,18 +5,19 @@ A chat assistant for an estate agency CRM with the two modes of the real AI Oper
 - **Ask** (read-only) looks things up and answers in plain language.
 - **Run a task** (writes) proposes a change, shows you exactly what it will do, and only runs it after you say yes.
 
-It is a real chat interface backed by a real language model. Seven typed tools run against an invented dataset of a fictional London agency: 10 leads, 5 tasks and 7 calendar events.
+It is a real chat interface backed by a real language model. Seven typed tools, each with a declared input and output schema, run against an invented dataset of a fictional London agency: 10 leads, 5 tasks and 7 calendar events.
 
 ```
 You: How many leads came in this week?
-  [calls get_insights(period="this_week") · read]
+  [calls get_insights(period="this_week")]
 AI Operator: 3 new leads this week, 2 are unassigned.
 
 You: Create a task to call Aisha Khan on Friday
-  [calls create_task(title="Call Aisha Khan", due="friday", related_to="Aisha Khan") · write]
+  [proposes create_task(title="Call Aisha Khan", due="friday", related_to="Aisha Khan") · waiting for your confirmation]
 AI Operator: I'll do this: Create task "Call Aisha Khan", due Fri 20 Nov 2026, linked to Aisha Khan (L-001). Shall I go ahead? (yes / no)
 You: Yes
-  ✓ executed: Create task "Call Aisha Khan", due Fri 20 Nov 2026, linked to Aisha Khan (L-001).
+  [calls create_task(title="Call Aisha Khan", due="friday", related_to="Aisha Khan")]
+  ✓ done: Create task "Call Aisha Khan", due Fri 20 Nov 2026, linked to Aisha Khan (L-001).
 AI Operator: Done, the task has been created.
 ```
 
@@ -52,10 +53,25 @@ uvicorn web.app:app --reload
 
 The web UI has an Ask / Run a task switch, Confirm and Cancel buttons for writes, and a live panel showing leads, tasks and calendar. You can watch a record change after you confirm.
 
+**Live check against the real model.** This runs the brief's own test conversation, plus the safety cases, against your configured model, and prints PASS or FAIL for each. It uses a temporary copy of the data and costs a few pence.
+
+```bash
+python live_check.py
+```
+
+It checks that:
+- the Ask question uses a read tool only and reports 3 new leads, 2 unassigned;
+- `create_task` waits for confirmation and saves nothing until "Yes", then saves the right title, date and lead;
+- "no" cancels a status change;
+- Ask mode never offers a write;
+- a person who isn't in the CRM is reported, not invented.
+
+It also prints the reply to a question the CRM can't answer, for you to read.
+
 **Tests** run offline with a scripted model, so they need no API key:
 
 ```bash
-pytest -q        # 48 tests
+pytest -q        # 60 tests
 ```
 
 ### Things to try
@@ -98,7 +114,9 @@ Both sit behind one small interface in `ai_operator/providers.py`. The pattern i
 
 ## The tools
 
-Every tool is a typed function with a Pydantic input model. The JSON schema the model sees is generated from that model, and the same model validates whatever the model sends back. Unknown or extra arguments are rejected.
+Every tool is a typed function with a Pydantic **input** model and a Pydantic **output** model.
+- **Input:** the JSON schema the model sees is generated from the input model, and the same model validates whatever the model sends back. Unknown or extra arguments are rejected.
+- **Output:** every result is checked against the tool's output model before it goes back to the model. A tool that returned the wrong shape would fail loudly rather than feed the model something unexpected.
 
 | Tool | Mode | What it does |
 |---|---|---|
@@ -165,7 +183,8 @@ ai_operator/
   seed.py       invented mock data, dated relative to today
 cli.py          terminal chat
 web/            FastAPI app and a single-page UI
-tests/          48 offline tests (tools, agent loop, web API) and a scripted model for them
+live_check.py   runs the brief's test conversation against the real model
+tests/          60 offline tests (tools, agent loop, web API, live check) and a scripted model for them
 data/crm.json   created on first run (git-ignored)
 ```
 

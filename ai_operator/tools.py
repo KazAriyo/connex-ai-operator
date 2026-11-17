@@ -30,6 +30,7 @@ class ToolSpec:
     mode: Literal["read", "write"]
     description: str
     input_model: type[BaseModel]
+    output_model: type[BaseModel]
     run: Optional[Callable[[CRMStore, Any], dict]] = None
     prepare: Optional[Callable[[CRMStore, Any], PreparedAction]] = None
 
@@ -51,9 +52,123 @@ class ToolSpec:
             )
             raise ToolError(f"Invalid arguments for {self.name}: {problems}") from None
 
+    def check_output(self, data: dict) -> dict:
+        try:
+            return self.output_model.model_validate(data).model_dump()
+        except ValidationError as exc:
+            raise ToolError(f"Internal error: {self.name} produced output that does not match its schema "
+                            f"({exc.error_count()} problem(s)).") from None
+
 
 class _Input(BaseModel):
     model_config = ConfigDict(extra="forbid")
+
+
+class _Output(BaseModel):
+    model_config = ConfigDict(extra="forbid")
+
+
+class LeadOut(_Output):
+    id: str
+    name: str
+    type: Literal["buyer", "tenant", "vendor", "landlord"]
+    source: str
+    status: LeadStatus
+    assigned_to: Optional[str]
+    interest: str
+    budget_gbp: Optional[int]
+    area: str
+    created_on: str
+    last_contacted: Optional[str]
+    phone: str
+    email: str
+    notes: str
+
+
+class TaskOut(_Output):
+    id: str
+    title: str
+    due: str
+    status: Literal["open", "done"]
+    related_to: Optional[str]
+    created_on: str
+
+
+class TaskRowOut(TaskOut):
+    related_lead_name: Optional[str]
+    overdue: bool
+
+
+class TaskRefOut(_Output):
+    id: str
+    title: str
+    due: str
+
+
+class EventOut(_Output):
+    id: str
+    title: str
+    type: str
+    start: str
+    end: str
+    location: str
+    lead_id: Optional[str]
+    staff: str
+
+
+class SearchLeadsOutput(_Output):
+    today: str
+    total_matching: int
+    leads: list[LeadOut]
+    not_contacted_since: Optional[str] = None
+    note: Optional[str] = None
+
+
+class InsightsOutput(_Output):
+    today: str
+    period: str
+    period_start: Optional[str]
+    new_leads: int
+    new_leads_unassigned: int
+    new_leads_by_source: dict[str, int]
+    new_lead_names: list[str]
+    total_leads: int
+    leads_by_status: dict[str, int]
+    active_leads_not_contacted_in_7_days: int
+    active_leads_not_contacted_in_7_days_names: list[str]
+    open_tasks: int
+    overdue_tasks: list[TaskRefOut]
+    events_next_7_days: int
+
+
+class CalendarOutput(_Output):
+    today: str
+    start_date: str
+    end_date: str
+    count: int
+    events: list[EventOut]
+    note: Optional[str] = None
+
+
+class ListTasksOutput(_Output):
+    today: str
+    count: int
+    tasks: list[TaskRowOut]
+    note: Optional[str] = None
+
+
+class CreateTaskOutput(_Output):
+    created: TaskOut
+    due_pretty: str
+
+
+class UpdateLeadStatusOutput(_Output):
+    updated: LeadOut
+    previous_status: LeadStatus
+
+
+class CompleteTaskOutput(_Output):
+    completed: TaskOut
 
 
 def clean_schema(schema: dict) -> dict:
@@ -246,7 +361,7 @@ def get_calendar(store: CRMStore, a: GetCalendarInput) -> dict:
         (ev for ev in store.events if s <= datetime.fromisoformat(ev["start"]).date() <= e),
         key=lambda ev: ev["start"],
     )
-    out = {"today": today().isoformat(), "from": s.isoformat(), "to": e.isoformat(),
+    out = {"today": today().isoformat(), "start_date": s.isoformat(), "end_date": e.isoformat(),
            "count": len(events), "events": events}
     if not events:
         out["note"] = "No events in this range."
@@ -373,26 +488,26 @@ def prepare_complete_task(store: CRMStore, a: CompleteTaskInput) -> PreparedActi
 TOOLS: dict[str, ToolSpec] = {t.name: t for t in [
     ToolSpec("search_leads", "read",
              "Search leads by keyword, status, assignment or last-contact date. Read-only.",
-             SearchLeadsInput, run=search_leads),
+             SearchLeadsInput, SearchLeadsOutput, run=search_leads),
     ToolSpec("get_insights", "read",
              "Computed CRM stats: new leads in a period (and how many are unassigned), pipeline by status, "
              "leads not contacted in 7 days, open and overdue tasks. Read-only.",
-             GetInsightsInput, run=get_insights),
+             GetInsightsInput, InsightsOutput, run=get_insights),
     ToolSpec("get_calendar", "read",
              "Calendar events (viewings, valuations, meetings, calls) in a date range. Read-only.",
-             GetCalendarInput, run=get_calendar),
+             GetCalendarInput, CalendarOutput, run=get_calendar),
     ToolSpec("list_tasks", "read",
              "List tasks, optionally for one lead, with overdue flags. Read-only.",
-             ListTasksInput, run=list_tasks),
+             ListTasksInput, ListTasksOutput, run=list_tasks),
     ToolSpec("create_task", "write",
              "Create a new task. The user is always asked to confirm before it is saved.",
-             CreateTaskInput, prepare=prepare_create_task),
+             CreateTaskInput, CreateTaskOutput, prepare=prepare_create_task),
     ToolSpec("update_lead_status", "write",
              "Change a lead's status. The user is always asked to confirm before it is saved.",
-             UpdateLeadStatusInput, prepare=prepare_update_lead_status),
+             UpdateLeadStatusInput, UpdateLeadStatusOutput, prepare=prepare_update_lead_status),
     ToolSpec("complete_task", "write",
              "Mark an open task as done. The user is always asked to confirm before it is saved.",
-             CompleteTaskInput, prepare=prepare_complete_task),
+             CompleteTaskInput, CompleteTaskOutput, prepare=prepare_complete_task),
 ]}
 
 

@@ -27,8 +27,11 @@ def show(reply: Reply, verbose: bool) -> None:
     for e in reply.events:
         t = e["type"]
         if t == "tool_call":
-            tag = "write" if e["mode"] == "write" else "read"
-            print(c(f"  [calls {e['name']}({describe_args(e['args'])}) · {tag}]", "2"))
+            call = f"{e['name']}({describe_args(e['args'])})"
+            if e["mode"] == "write":
+                print(c(f"  [proposes {call} · waiting for your confirmation]", "2"))
+            else:
+                print(c(f"  [calls {call}]", "2"))
         elif t == "tool_result":
             if not e["ok"]:
                 print(c(f"  [{e['name']} error: {e['data'].get('error')}]", "33"))
@@ -39,7 +42,8 @@ def show(reply: Reply, verbose: bool) -> None:
         elif t == "confirm":
             print(c("AI Operator: ", "1;36") + c(e["text"], "1;33"))
         elif t == "executed":
-            print(c(f"  ✓ executed: {e['summary']}", "32"))
+            print(c(f"  [calls {e['name']}({describe_args(e['args'])})]", "2"))
+            print(c(f"  ✓ done: {e['summary']}", "32"))
         elif t == "cancelled":
             print(c(f"  ✗ not executed: {e['summary']}", "31"))
         elif t == "error":

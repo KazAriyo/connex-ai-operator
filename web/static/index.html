@@ -171,7 +171,8 @@ function args(a) {
 function render(events) {
   for (const e of events) {
     if (e.type === "tool_call") {
-      add(`calls <b>${esc(e.name)}</b>(${esc(args(e.args))})<span class="tag ${e.mode === "write" ? "write" : "read"}">${e.mode === "write" ? "write" : "read-only"}</span>`, "tool");
+      const write = e.mode === "write";
+      add(`${write ? "proposes" : "calls"} <b>${esc(e.name)}</b>(${esc(args(e.args))})<span class="tag ${write ? "write" : "read"}">${write ? "needs confirmation" : "read-only"}</span>`, "tool");
     } else if (e.type === "tool_result" && !e.ok) {
       add(`${esc(e.name)} → ${esc(e.data?.error || "error")}`, "tool err");
     } else if (e.type === "assistant") {
@@ -184,6 +185,7 @@ function render(events) {
       box.querySelector(".no").onclick = () => { box.classList.add("done"); chat("no"); };
     } else if (e.type === "executed") {
       document.querySelectorAll(".confirm").forEach((b) => b.classList.add("done"));
+      add(`calls <b>${esc(e.name)}</b>(${esc(args(e.args))})<span class="tag write">write</span>`, "tool");
       add(`✓ Done: ${esc(e.summary)}`, "status ok");
     } else if (e.type === "cancelled") {
       document.querySelectorAll(".confirm").forEach((b) => b.classList.add("done"));

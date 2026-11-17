@@ -136,7 +136,7 @@ class Operator:
                 if spec.is_write:
                     self._queue.append(Pending(call, spec, spec.prepare(self.store, args)))
                 else:
-                    self._result(call, spec.run(self.store, args), reply)
+                    self._result(call, spec.check_output(spec.run(self.store, args)), reply)
             except ToolError as exc:
                 self._result(call, {"error": str(exc)}, reply, is_error=True)
             except Exception as exc:
@@ -156,9 +156,10 @@ class Operator:
 
         if said in YES:
             try:
-                result = p.action.apply()
+                result = p.spec.check_output(p.action.apply())
                 self._result(p.call, {"status": "executed", **result}, reply)
-                reply.events.append({"type": "executed", "summary": p.action.summary})
+                reply.events.append({"type": "executed", "name": p.spec.name, "args": p.call.args,
+                                     "summary": p.action.summary})
             except ToolError as exc:
                 self._result(p.call, {"status": "failed", "executed": False, "error": str(exc)}, reply, is_error=True)
             except Exception as exc:
