@@ -150,13 +150,42 @@ class OpenAIProvider(Provider):
         return msgs
 
     def _create(self, system: str, history: list[dict], tools: list[dict]):
-        return self.client.chat.completions.create(
+        from openai.types.chat import ChatCompletion
+        from pydantic import ValidationError
+
+        raw = self.client.chat.completions.with_raw_response.create(
             model=self.model,
             messages=self.to_messages(system, history),
             tools=[{"type": "function", "function": {
                 "name": t["name"], "description": t["description"], "parameters": t["schema"]}}
                 for t in tools],
         )
+        parsed = raw.parse()
+        if isinstance(parsed, ChatCompletion) and parsed.choices:
+            return parsed
+
+        http = raw.http_response
+        body = http.text
+        try:
+            data = json.loads(body)
+        except ValueError:
+            data = None
+        if isinstance(data, dict) and data.get("error"):
+            err = data["error"]
+            detail = err.get("message", err) if isinstance(err, dict) else err
+            raise ProviderError(f"{self.service.label} returned an error: {detail}")
+        if isinstance(data, dict):
+            try:
+                completion = ChatCompletion.model_validate(data)
+                if completion.choices:
+                    return completion
+            except ValidationError:
+                pass
+        snippet = " ".join(body.split())[:300]
+        raise ProviderError(
+            f"{self.service.label} sent back something that is not a model reply "
+            f"(HTTP {http.status_code}, {http.headers.get('content-type', 'no content type')}, "
+            f"from {http.url}): {snippet!r}")
 
     def complete(self, system, history, tools):
         label, key_env, errors = self.service.label, self.service.key_env, self._openai

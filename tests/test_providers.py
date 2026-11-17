@@ -189,3 +189,26 @@ def test_github_bad_token_message():
                                  lambda r: httpx.Response(401, json={"error": {"message": "Bad credentials"}}))))
     with pytest.raises(ProviderError, match="GitHub Models rejected the API key. Check GITHUB_TOKEN"):
         p.complete("s", HISTORY, TOOLS)
+
+
+def test_non_json_reply_is_reported_with_details():
+    p = provider_with(lambda r: httpx.Response(200, headers={"content-type": "text/html"},
+                                               text="<html><body>Please sign in</body></html>"))
+    with pytest.raises(ProviderError) as exc:
+        p.complete("s", HISTORY, TOOLS)
+    message = str(exc.value)
+    assert "not a model reply" in message and "text/html" in message and "Please sign in" in message
+    assert "chat/completions" in message
+
+
+def test_json_reply_with_wrong_content_type_still_works():
+    body = json.dumps(completion({"role": "assistant", "content": "hello"}))
+    p = provider_with(lambda r: httpx.Response(200, headers={"content-type": "text/html"}, text=body))
+    assert p.complete("s", HISTORY, TOOLS).text == "hello"
+
+
+def test_error_object_in_a_200_reply_is_reported():
+    p = provider_with(lambda r: httpx.Response(200, headers={"content-type": "text/plain"},
+                                               text=json.dumps({"error": {"message": "Unknown model"}})))
+    with pytest.raises(ProviderError, match="returned an error: Unknown model"):
+        p.complete("s", HISTORY, TOOLS)
