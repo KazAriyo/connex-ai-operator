@@ -25,7 +25,7 @@ AI Operator: Done, the task has been created.
 
 ## Run it
 
-You need Python 3.10 or newer and an API key for Anthropic or OpenAI.
+You need Python 3.10 or newer and one API key: **Groq (free)**, Anthropic or OpenAI.
 
 ```bash
 git clone <this repo> && cd connex-ai-operator
@@ -71,7 +71,7 @@ It also prints the reply to a question the CRM can't answer, for you to read.
 **Tests** run offline with a scripted model, so they need no API key:
 
 ```bash
-pytest -q        # 60 tests
+pytest -q        # 70 tests
 ```
 
 ### Things to try
@@ -95,20 +95,29 @@ The mock data is generated relative to today's date and refreshed automatically 
 
 ## Model and provider
 
-- **Default:** Anthropic Claude through its native tool use. The default model is `claude-sonnet-5-5`; set `OPERATOR_MODEL=claude-haiku-5-5` for a cheaper, faster run.
-- **Also supported:** OpenAI function calling. Set `OPERATOR_PROVIDER=openai`, `OPENAI_API_KEY` and, optionally, `OPERATOR_MODEL`.
+Three providers are supported. The app uses whichever key you set.
+
+| Provider | Pattern | Default model | Cost |
+|---|---|---|---|
+| **Groq** | OpenAI-style function calling | `openai/gpt-oss-120b` | Free plan, no card needed |
+| **Anthropic** | Native Claude tool use | `claude-sonnet-5-5` | Paid |
+| **OpenAI** | Function calling | `gpt-4.1-mini` | Paid |
+
+**Free key from Groq:** sign up at [console.groq.com](https://console.groq.com), open **API Keys**, click **Create API Key**, and paste the key into `.env` as `GROQ_API_KEY=...`. The free plan is rate limited (roughly 30 requests and 8,000 tokens per minute). The app waits and retries automatically when it hits the limit, so a reply can occasionally take a little longer.
+
+All three sit behind one small interface in `ai_operator/providers.py`. The pattern is the same for each: the model proposes a typed call, our code validates and executes it, and the result goes back to the model. Switching vendor changes nothing else in the app.
 
 Settings in `.env` (leave any you don't need empty):
 
 | Setting | Purpose |
 |---|---|
-| `ANTHROPIC_API_KEY` | Key for Anthropic. If set, Anthropic is used by default. |
+| `GROQ_API_KEY` | Free key from Groq. |
+| `ANTHROPIC_API_KEY` | Key for Anthropic. |
 | `OPENAI_API_KEY` | Key for OpenAI. |
-| `OPERATOR_PROVIDER` | `anthropic` or `openai`. Optional; picked from whichever key is set. |
-| `OPERATOR_MODEL` | Model name override, e.g. `claude-haiku-5-5` or `gpt-4.1-mini`. |
+| `OPERATOR_PROVIDER` | `groq`, `anthropic` or `openai`. Optional; if empty, the first key found is used (Anthropic, then OpenAI, then Groq). |
+| `OPERATOR_MODEL` | Model name override, e.g. `openai/gpt-oss-20b`, `claude-haiku-5-5` or `gpt-4.1-mini`. |
 | `OPERATOR_TODAY` | Optional `YYYY-MM-DD` to pin "today" for a repeatable demo. |
 
-Both sit behind one small interface in `ai_operator/providers.py`. The pattern is the same for both: the model proposes a typed call, our code validates and executes it, and the result goes back to the model. Switching vendor changes nothing else in the app.
 
 ---
 
@@ -176,7 +185,7 @@ A language model is a decision-maker that is usually right and occasionally conf
 ai_operator/
   agent.py      the loop and the confirm-before-write gate
   tools.py      typed tools: schemas, validation, read and write logic
-  providers.py  Anthropic and OpenAI adapters
+  providers.py  Anthropic, OpenAI and Groq adapters
   prompts.py    system prompt (date, mode, grounding rules)
   clock.py      date expressions resolved by code
   store.py      JSON file store (atomic writes)
@@ -184,7 +193,7 @@ ai_operator/
 cli.py          terminal chat
 web/            FastAPI app and a single-page UI
 live_check.py   runs the brief's test conversation against the real model
-tests/          60 offline tests (tools, agent loop, web API, live check) and a scripted model for them
+tests/          70 offline tests (tools, agent loop, providers, web API, live check) and a scripted model for them
 data/crm.json   created on first run (git-ignored)
 ```
 

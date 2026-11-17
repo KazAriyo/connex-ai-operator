@@ -134,7 +134,8 @@ def main() -> int:
         return 1
 
     print(f"Live check against {provider.name} / {provider.model}")
-    print("Uses a temporary copy of the mock data. Your data/crm.json is not touched.\n")
+    print("Uses a temporary copy of the mock data. Your data/crm.json is not touched.")
+    print("Free plans allow only a few requests per minute, so this can take a few minutes.\n")
     with tempfile.TemporaryDirectory() as tmp:
         results = run_checks(provider, Path(tmp) / "crm.json")
 

@@ -40,7 +40,8 @@ class AnthropicProvider(Provider):
 
         self.model = model or os.environ.get("OPERATOR_MODEL") or "claude-sonnet-5-5"
         self._anthropic = anthropic
-        self.client = anthropic.Anthropic(api_key=api_key or os.environ.get("ANTHROPIC_API_KEY"))
+        self.client = anthropic.Anthropic(api_key=api_key or os.environ.get("ANTHROPIC_API_KEY"),
+                                          max_retries=6, timeout=60)
 
     @staticmethod
     def to_messages(history: list[dict]) -> list[dict]:
@@ -98,15 +99,33 @@ class AnthropicProvider(Provider):
         return turn
 
 
-class OpenAIProvider(Provider):
-    name = "openai"
+@dataclass(frozen=True)
+class CompatibleService:
+    name: str
+    label: str
+    key_env: str
+    default_model: str
+    base_url: str | None
 
-    def __init__(self, model: str | None = None, api_key: str | None = None):
+
+OPENAI = CompatibleService("openai", "OpenAI", "OPENAI_API_KEY", "gpt-4.1-mini", None)
+GROQ = CompatibleService("groq", "Groq", "GROQ_API_KEY", "openai/gpt-oss-120b", "https://api.groq.com/openai/v1")
+
+
+class OpenAIProvider(Provider):
+    def __init__(self, service: CompatibleService = OPENAI, model: str | None = None, api_key: str | None = None):
         import openai
 
-        self.model = model or os.environ.get("OPERATOR_MODEL") or "gpt-4.1-mini"
+        self.service = service
+        self.name = service.name
+        self.model = model or os.environ.get("OPERATOR_MODEL") or service.default_model
         self._openai = openai
-        self.client = openai.OpenAI(api_key=api_key or os.environ.get("OPENAI_API_KEY"))
+        self.client = openai.OpenAI(
+            api_key=api_key or os.environ.get(service.key_env),
+            base_url=service.base_url,
+            max_retries=6,
+            timeout=60,
+        )
 
     @staticmethod
     def to_messages(system: str, history: list[dict]) -> list[dict]:
@@ -128,25 +147,38 @@ class OpenAIProvider(Provider):
                 msgs.append({"role": "tool", "tool_call_id": m["tool_call_id"], "content": m["content"]})
         return msgs
 
+    def _create(self, system: str, history: list[dict], tools: list[dict]):
+        return self.client.chat.completions.create(
+            model=self.model,
+            messages=self.to_messages(system, history),
+            tools=[{"type": "function", "function": {
+                "name": t["name"], "description": t["description"], "parameters": t["schema"]}}
+                for t in tools],
+        )
+
     def complete(self, system, history, tools):
-        try:
-            resp = self.client.chat.completions.create(
-                model=self.model,
-                messages=self.to_messages(system, history),
-                tools=[{"type": "function", "function": {
-                    "name": t["name"], "description": t["description"], "parameters": t["schema"]}}
-                    for t in tools],
-            )
-        except self._openai.AuthenticationError:
-            raise ProviderError("OpenAI rejected the API key. Check OPENAI_API_KEY in your .env file.") from None
-        except self._openai.NotFoundError:
-            raise ProviderError(f"OpenAI does not recognise the model '{self.model}'. Set OPERATOR_MODEL.") from None
-        except self._openai.RateLimitError:
-            raise ProviderError("OpenAI rate limit or quota reached. Check your billing or wait.") from None
-        except self._openai.APIConnectionError:
-            raise ProviderError("Could not reach the OpenAI API. Check your internet connection.") from None
-        except self._openai.APIError as exc:
-            raise ProviderError(f"OpenAI API error: {exc}") from None
+        label, key_env, errors = self.service.label, self.service.key_env, self._openai
+        resp = None
+        for attempt in range(2):
+            try:
+                resp = self._create(system, history, tools)
+                break
+            except errors.AuthenticationError:
+                raise ProviderError(f"{label} rejected the API key. Check {key_env} in your .env file.") from None
+            except errors.NotFoundError:
+                raise ProviderError(f"{label} does not recognise the model '{self.model}'. Set OPERATOR_MODEL.") from None
+            except errors.RateLimitError:
+                raise ProviderError(f"{label} rate limit reached, even after waiting and retrying. "
+                                    "Free plans allow only a few requests per minute: wait a minute and try again.") from None
+            except errors.APIConnectionError:
+                raise ProviderError(f"Could not reach the {label} API. Check your internet connection.") from None
+            except errors.BadRequestError as exc:
+                if getattr(exc, "code", None) != "tool_use_failed":
+                    raise ProviderError(f"{label} API error: {exc}") from None
+                if attempt == 1:
+                    raise ProviderError("The model produced a malformed tool call twice. Try rephrasing.") from None
+            except errors.APIError as exc:
+                raise ProviderError(f"{label} API error: {exc}") from None
 
         msg = resp.choices[0].message
         turn = ModelTurn(text=msg.content or "")
@@ -160,23 +192,22 @@ class OpenAIProvider(Provider):
         return turn
 
 
+SERVICES = {"openai": OPENAI, "groq": GROQ}
+KEY_ENVS = {"anthropic": "ANTHROPIC_API_KEY", "openai": OPENAI.key_env, "groq": GROQ.key_env}
+
+
 def make_provider() -> Provider:
     choice = (os.environ.get("OPERATOR_PROVIDER") or "").strip().lower()
     if not choice:
-        if os.environ.get("ANTHROPIC_API_KEY"):
-            choice = "anthropic"
-        elif os.environ.get("OPENAI_API_KEY"):
-            choice = "openai"
-        else:
+        choice = next((name for name, env in KEY_ENVS.items() if os.environ.get(env)), "")
+        if not choice:
             raise ProviderError(
-                "No API key found. Copy .env.example to .env and set ANTHROPIC_API_KEY "
-                "(or OPENAI_API_KEY with OPERATOR_PROVIDER=openai).")
+                "No API key found. Copy .env.example to .env and set one of "
+                "GROQ_API_KEY (free), ANTHROPIC_API_KEY or OPENAI_API_KEY.")
+    if choice not in KEY_ENVS:
+        raise ProviderError(f"Unknown OPERATOR_PROVIDER '{choice}'. Use 'anthropic', 'openai' or 'groq'.")
+    if not os.environ.get(KEY_ENVS[choice]):
+        raise ProviderError(f"OPERATOR_PROVIDER is {choice} but {KEY_ENVS[choice]} is not set.")
     if choice == "anthropic":
-        if not os.environ.get("ANTHROPIC_API_KEY"):
-            raise ProviderError("OPERATOR_PROVIDER is anthropic but ANTHROPIC_API_KEY is not set.")
         return AnthropicProvider()
-    if choice == "openai":
-        if not os.environ.get("OPENAI_API_KEY"):
-            raise ProviderError("OPERATOR_PROVIDER is openai but OPENAI_API_KEY is not set.")
-        return OpenAIProvider()
-    raise ProviderError(f"Unknown OPERATOR_PROVIDER '{choice}'. Use 'anthropic' or 'openai'.")
+    return OpenAIProvider(SERVICES[choice])
