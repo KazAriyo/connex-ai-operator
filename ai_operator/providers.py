@@ -110,8 +110,6 @@ class CompatibleService:
 
 OPENAI = CompatibleService("openai", "OpenAI", "OPENAI_API_KEY", "gpt-4.1-mini", None)
 GROQ = CompatibleService("groq", "Groq", "GROQ_API_KEY", "openai/gpt-oss-120b", "https://api.groq.com/openai/v1")
-GITHUB = CompatibleService("github", "GitHub Models", "GITHUB_TOKEN", "openai/gpt-4o-mini",
-                           "https://models.github.ai/inference")
 
 
 class OpenAIProvider(Provider):
@@ -223,9 +221,8 @@ class OpenAIProvider(Provider):
         return turn
 
 
-SERVICES = {"openai": OPENAI, "groq": GROQ, "github": GITHUB}
-KEY_ENVS = {"anthropic": "ANTHROPIC_API_KEY", "openai": OPENAI.key_env, "groq": GROQ.key_env,
-            "github": GITHUB.key_env}
+SERVICES = {"openai": OPENAI, "groq": GROQ}
+KEY_ENVS = {"anthropic": "ANTHROPIC_API_KEY", "openai": OPENAI.key_env, "groq": GROQ.key_env}
 
 
 def make_provider() -> Provider:
@@ -235,9 +232,9 @@ def make_provider() -> Provider:
         if not choice:
             raise ProviderError(
                 "No API key found. Copy .env.example to .env and set one of "
-                "GROQ_API_KEY (free), GITHUB_TOKEN (free), ANTHROPIC_API_KEY or OPENAI_API_KEY.")
+                "GROQ_API_KEY (free), ANTHROPIC_API_KEY or OPENAI_API_KEY.")
     if choice not in KEY_ENVS:
-        raise ProviderError(f"Unknown OPERATOR_PROVIDER '{choice}'. Use 'groq', 'github', 'anthropic' or 'openai'.")
+        raise ProviderError(f"Unknown OPERATOR_PROVIDER '{choice}'. Use 'groq', 'anthropic' or 'openai'.")
     if not os.environ.get(KEY_ENVS[choice]):
         raise ProviderError(f"OPERATOR_PROVIDER is {choice} but {KEY_ENVS[choice]} is not set.")
     if choice == "anthropic":
